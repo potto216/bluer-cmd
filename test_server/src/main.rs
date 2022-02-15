@@ -5,6 +5,7 @@ use std::{net::Ipv4Addr, sync::Arc, time::Duration};
 use tokio::{net::TcpListener, sync::RwLock, time::sleep};
 
 use counter::{Counter, CounterServerSharedMut, TestCommand, TestCommandServerSharedMut, IncreaseError, TCP_PORT};
+
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
@@ -98,6 +99,9 @@ pub struct TestCommandObj {
     watchers: Vec<rch::watch::Sender<u32>>,
 }
 
+
+
+
 /// Implementation of remote counting service.
 #[rtc::async_trait]
 impl TestCommand for TestCommandObj {
@@ -114,19 +118,12 @@ impl TestCommand for TestCommandObj {
         Ok(rx)
     }
 
-    async fn get_address(&mut self, by: u32) -> Result<(), IncreaseError> {
-        // Perform the addition if it does not overflow the counter.
-        match self.value.checked_add(by) {
-            Some(new_value) => self.value = new_value,
-            None => return Err(IncreaseError::Overflow { current_value: self.value }),
-        }
+    async fn request_advertisement(&mut self, uuid_service: String)  -> Result<bluer::Address, rtc::CallError> {
+        let ret_val:bluer::Address=bluer::Address.new([0,0,0,0,0,0]);
 
-        // Notify all watchers and keep only the ones that are not disconnected.
-        let value = self.value;
-        self.watchers.retain(|watch| !watch.send(value).into_disconnected().unwrap());
-
-        Ok(())
+        return Ok(ret_val);
     }
+
 }
 
 
@@ -135,6 +132,7 @@ async fn main() {
     // Initialize logging.
     tracing_subscriber::FmtSubscriber::builder().init();
 
+    
     let opt = Opt::from_args();
 
     println!("{:?}", opt);
@@ -160,7 +158,6 @@ async fn main() {
             break;
         }
     };
-
     //let adapter_name = adapter_names.first().expect("No Bluetooth adapter present");
     //let adapter = session.adapter(adapter_name)?;
     let adapter_name = adapter.name();    
@@ -179,6 +176,10 @@ async fn main() {
     // Create a counter object that will be shared between all clients.
     // You could also create one counter object per connection.
     let counter_obj = Arc::new(RwLock::new(CounterObj::default()));
+
+    let test_command_obj = Arc::new(RwLock::new(TestCommandObj::default()));
+
+   // test_command_obj.adapter = adapter;
 
     // Listen to TCP connections using Tokio.
     // In reality you would probably use TLS or WebSockets over HTTPS.

@@ -56,7 +56,7 @@ pub trait TestCommand {
     /// when it changes.
     async fn watch(&mut self) -> Result<rch::watch::Receiver<u32>, rtc::CallError>;
 
-    /// Get the Bluetooth address
-    async fn get_address(&mut self, address: u32) -> Result<(), IncreaseError>;
+    /// Get the Bluetooth address  bluer::Address;
+    async fn request_advertisement(&mut self, uuid_service: String) -> Result<bluer::Address, rtc::CallError>;
 
 }
