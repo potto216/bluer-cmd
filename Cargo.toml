@@ -3,7 +3,5 @@ members = [
     "le_advertise",
     "le_scan",
     "gatt_client",
-    "test_server",
-    "test_client",
-    "lib/counter"
+    "gatt_server_io",
 ]
