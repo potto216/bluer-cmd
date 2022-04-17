@@ -11,29 +11,28 @@ use tokio::{
 use structopt::StructOpt;
 use std::str::FromStr;
 
-
 #[derive(Debug, StructOpt)]
-#[structopt(name = "gatt_client", about = "A command tool to test GATT servers.")]
-enum BlueCommand {
-    Select
-    {
-        #[structopt(short, long, help = "Select the output format.", default_value = "display")]
-        _output: String,
-        
-        address: String,
+#[structopt(name = "gatt_client", about = "A command tool to communicate with GATT servers")]
+struct Opt {
+    /// Activate debug mode
+    // short and long flags (-d, --debug) will be deduced from the field's name
+    #[structopt(short, long, help="Show additional information for troubleshooting such as details about the adapters")]
+    debug: bool,
+    // short and long flags (-a, --advertiser) will be deduced from the field's name     
+    #[structopt(short, long, required=true, help="The GATT server address in the form XX:XX:XX:XX:XX:XX  ex: 5C:F3:70:A1:71:0F")]
+    server_address: String,
 
-    },
+    #[structopt(short, long, required=true, help="The GATT client address in the form XX:XX:XX:XX:XX:XX  ex: 5C:F3:70:A1:71:0F")]
+    client_address: String,
+
+    // short and long flags (-u, --uuid-service) will be deduced from the field's name     
+    #[structopt(short, long, default_value="", help="This is the service to except from the advertiser. ex: 123e4567-e89b-12d3-a456-426614174000")]
+    uuid_service: String,
+
+    #[structopt(short, long, help = "Select the output format.", default_value = "display")]
+    output: String,
 
 }
-
-impl std::fmt::Display for BlueCommand {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match *self {
-            BlueCommand::Select { .. } => write!(f, "Select"),         
-        }        
-    }
-}
-
 
 #[derive(Debug, PartialEq)]
 enum OutputFormat {
@@ -198,23 +197,23 @@ async fn exercise_characteristic(char: &Characteristic) -> Result<()> {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> bluer::Result<()> {
-    let blue_command = BlueCommand::from_args();
 
-    let _my_address = match blue_command {
-        BlueCommand::Select { address, ..} => 
-        { 
-            address.clone()      
-        }
-
-    };  
-
-    env_logger::init();
-    let session = bluer::Session::new().await?;
-        
+    let opt = Opt::from_args();
     
-    let adapter = session.adapter("hci1")?;
+    env_logger::init();
 
-    /*    
+    let debug_mode = opt.debug;    
+    if debug_mode
+    {
+        println!("{:?}", opt);
+    }
+
+    let my_address = opt.client_address.clone();
+
+    let session = bluer::Session::new().await?;
+
+    let _uuid_service = opt.uuid_service;         
+        
     let adapter_names = session.adapter_names().await?;
     let adapter_name = adapter_names.first().expect("No Bluetooth adapter present");
     let mut adapter = session.adapter(adapter_name)?;
@@ -227,18 +226,23 @@ async fn main() -> bluer::Result<()> {
             break;
         }
     };
-*/
     //let adapter_name = adapter_names.first().expect("No Bluetooth adapter present");
     //let adapter = session.adapter(adapter_name)?;
     let adapter_name = adapter.name();
     adapter.set_powered(true).await?;
 
+    if debug_mode
     {
-        println!(
-            "Discovering on Bluetooth adapter {} with address {}\n",
-            &adapter_name,
-            adapter.address().await?
-        );
+        println!("    Adapter name:               {}", adapter_name);
+        println!("    Address:                    {}", adapter.address().await?);
+        println!("    Address type:               {}", adapter.address_type().await?);
+        println!("    Friendly name:              {}", adapter.alias().await?);
+        println!("    System name:                {}", adapter.system_name().await?);
+        println!("    Modalias:                   {:?}", adapter.modalias().await?);
+        println!("    Powered:                    {:?}", adapter.is_powered().await?);        
+    }
+
+    {
         let discover = adapter.discover_devices().await?;
         pin_mut!(discover);
         let mut done = false;

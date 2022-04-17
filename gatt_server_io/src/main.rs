@@ -20,6 +20,8 @@ use tokio::{
 
 include!("gatt.inc");
 
+use structopt::StructOpt;
+
 #[derive(Debug, StructOpt)]
 #[structopt(name = "gatt_server_io", about = "A command tool to be a GATT server for LE data")]
 struct Opt {
@@ -52,12 +54,11 @@ async fn main() -> bluer::Result<()> {
         println!("{:?}", opt);
     }
 
-    let my_address = opt.scanner;
-    let remote_target_address = opt.advertiser;
+    let my_address = opt.server;
 
     let session = bluer::Session::new().await?;
 
-    let uuid_service = opt.uuid_service;         
+    let _uuid_service = opt.uuid_service;         
         
     let adapter_names = session.adapter_names().await?;
     let adapter_name = adapter_names.first().expect("No Bluetooth adapter present");
@@ -87,12 +88,6 @@ async fn main() -> bluer::Result<()> {
         println!("    Powered:                    {:?}", adapter.is_powered().await?);        
     }
 
-    env_logger::init();
-    let session = bluer::Session::new().await?;
-    let adapter = session.default_adapter().await?;
-    adapter.set_powered(true).await?;
-
-    println!("Advertising on Bluetooth adapter {} with address {}", adapter.name(), adapter.address().await?);
     let mut manufacturer_data = BTreeMap::new();
     manufacturer_data.insert(MANUFACTURER_ID, vec![0x21, 0x22, 0x23, 0x24]);
     let le_advertisement = Advertisement {
@@ -105,8 +100,13 @@ async fn main() -> bluer::Result<()> {
     let adv_handle = adapter.advertise(le_advertisement).await?;
 
     println!("Serving GATT service on Bluetooth adapter {}", adapter.name());
+    println!("SERVICE_UUID = {}", SERVICE_UUID);
+    println!("CHARACTERISTIC_UUID = {}", CHARACTERISTIC_UUID);
+    println!("CHARACTERISTIC_SWITCH_UUID = {}", CHARACTERISTIC_SWITCH_UUID);
+
     let (service_control, service_handle) = service_control();
     let (char_control, char_handle) = characteristic_control();
+    let (char_control_dio, char_handle_dio) = characteristic_control();
     let app = Application {
         services: vec![Service {
             uuid: SERVICE_UUID,
@@ -126,7 +126,25 @@ async fn main() -> bluer::Result<()> {
                 }),
                 control_handle: char_handle,
                 ..Default::default()
-            }],
+            },
+            Characteristic {
+                uuid: CHARACTERISTIC_SWITCH_UUID,
+                write: Some(CharacteristicWrite {
+                    write: true,
+                    write_without_response: true,
+                    method: CharacteristicWriteMethod::Io,
+                    ..Default::default()
+                }),           
+                notify: Some(CharacteristicNotify {
+                    notify: true,
+                    method: CharacteristicNotifyMethod::Io,
+                    ..Default::default()
+                }),
+                control_handle: char_handle_dio,
+                ..Default::default()
+            }
+            
+            ],
             control_handle: service_handle,
             ..Default::default()
         }],
@@ -136,6 +154,7 @@ async fn main() -> bluer::Result<()> {
 
     println!("Service handle is 0x{:x}", service_control.handle()?);
     println!("Characteristic handle is 0x{:x}", char_control.handle()?);
+    println!("Characteristic digital IO handle is 0x{:x}", char_control_dio.handle()?);    
 
     println!("Service ready. Press enter to quit.");
     let stdin = BufReader::new(tokio::io::stdin());
@@ -145,8 +164,16 @@ async fn main() -> bluer::Result<()> {
     let mut read_buf = Vec::new();
     let mut reader_opt: Option<CharacteristicReader> = None;
     let mut writer_opt: Option<CharacteristicWriter> = None;
+
+    let mut dio_value:  Vec<u8> = vec![0x00];
+    let mut dio_read_buf = Vec::new();
+    let mut dio_reader_opt: Option<CharacteristicReader> = None;
+    let mut dio_writer_opt: Option<CharacteristicWriter> = None;
+
+
     let mut interval = interval(Duration::from_secs(1));
     pin_mut!(char_control);
+    pin_mut!(char_control_dio);    
 
     loop {
         tokio::select! {
@@ -165,17 +192,42 @@ async fn main() -> bluer::Result<()> {
                     None => break,
                 }
             }
+
+            evt_dio = char_control_dio.next() => {
+                match evt_dio {
+                    Some(CharacteristicControlEvent::Write(req)) => {
+                        println!("Accepting DIO Switch write event with MTU {}", req.mtu());
+                        dio_read_buf = vec![0; req.mtu()];
+                        dio_reader_opt = Some(req.accept()?);
+                    },
+                    Some(CharacteristicControlEvent::Notify(notifier)) => {
+                        println!("Accepting DIO notify Switch request event with MTU {}", notifier.mtu());
+                        dio_writer_opt = Some(notifier);
+                    },
+                    None => break,
+                }
+            }
             _ = interval.tick() => {
                 println!("Decrementing each element by one");
                 for v in &mut *value {
                     *v = v.saturating_sub(1);
                 }
+
                 println!("Value is {:x?}", &value);
                 if let Some(writer) = writer_opt.as_mut() {
                     println!("Notifying with value {:x?}", &value);
                     if let Err(err) = writer.write(&value).await {
                         println!("Notification stream error: {}", &err);
                         writer_opt = None;
+                    }
+                }
+                
+                println!("DIO Value is {:x?}", &dio_value);
+                if let Some(dio_writer) = dio_writer_opt.as_mut() {
+                    println!("Notifying with DIO value {:x?}", &dio_value);
+                    if let Err(err) = dio_writer.write(&dio_value).await {
+                        println!("Notification stream error: {}", &err);
+                        dio_writer_opt = None;
                     }
                 }
             }
@@ -200,6 +252,28 @@ async fn main() -> bluer::Result<()> {
                     }
                 }
             }
+            
+            dio_read_res = async {
+                match &mut dio_reader_opt {
+                    Some(dio_reader) => dio_reader.read(&mut dio_read_buf).await,
+                    None => future::pending().await,
+                }
+            } => {
+                match dio_read_res {
+                    Ok(0) => {
+                        println!("Write stream ended");
+                        dio_reader_opt = None;
+                    }
+                    Ok(n) => {
+                        dio_value = dio_read_buf[0..n].to_vec();
+                        println!("Write request with {} bytes: {:x?}", n, &dio_value);
+                    }
+                    Err(err) => {
+                        println!("Write stream error: {}", &err);
+                        dio_reader_opt = None;
+                    }
+                }
+            }            
         }
     }
 
