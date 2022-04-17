@@ -4,4 +4,5 @@ members = [
     "le_scan",
     "gatt_client",
     "gatt_server_io",
+    "gatt_server_io_rpi",
 ]
