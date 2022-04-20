@@ -20,10 +20,27 @@ use tokio::{
 
 include!("gatt.inc");
 
+use std::error::Error;
+use std::thread;
+
+use rppal::gpio::Gpio;
+use rppal::system::DeviceInfo;
+
+//Channel No.   RPi Pin No. wiringPi    BCM	Descriptions
+//CH1           37          P25         26  Channel 1
+//CH2           38          P28         20  Channel 2
+//CH3           40          P29         21  Channel 3
+
+// Gpio uses BCM pin numbering. BCM GPIO 23 is tied to physical pin 16.
+const GPIO_LED: u8 = 23;
+const GPIO_RELAY_CH1: u8 = 26;
+const GPIO_RELAY_CH2: u8 = 20;
+const GPIO_RELAY_CH3: u8 = 21;
+
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
-#[structopt(name = "gatt_server_io", about = "A command tool to be a GATT server for LE data")]
+#[structopt(name = "gatt_server_io_rpi", about = "A command tool to be a GATT server for LE data for the RPI")]
 struct Opt {
     /// Activate debug mode
     // short and long flags (-d, --debug) will be deduced from the field's name
@@ -42,7 +59,7 @@ struct Opt {
 
 
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> bluer::Result<()> {
+async fn main() -> Result<(),Box<dyn Error>> { //bluer::Result<()> {
 
     let opt = Opt::from_args();
     
@@ -54,6 +71,48 @@ async fn main() -> bluer::Result<()> {
         println!("{:?}", opt);
     }
 
+
+    //******Setup GPIO*************/    
+    println!("Blinking an LED on a {}.", DeviceInfo::new()?.model());
+
+    //let mut rpi_pin = Gpio::new()?.get(GPIO_LED)?.into_output();
+    let mut rpi_pin_relay_ch1 = Gpio::new()?.get(GPIO_RELAY_CH1)?.into_output();
+    let mut rpi_pin_relay_ch2 = Gpio::new()?.get(GPIO_RELAY_CH2)?.into_output();
+    let mut rpi_pin_relay_ch3 = Gpio::new()?.get(GPIO_RELAY_CH3)?.into_output();
+/*
+    // Blink the LED by setting the pin's logic level high for 500 ms.
+    println!("CH 1 pin high.");
+    rpi_pin_relay_ch1.set_high();
+    thread::sleep(Duration::from_millis(1000));
+    println!("CH 1 pin low.");
+    rpi_pin_relay_ch1.set_low();
+    thread::sleep(Duration::from_millis(1000));
+    println!("CH 1 pin high.");
+    rpi_pin_relay_ch1.set_high();
+    
+
+    println!("CH 2 pin high.");
+    rpi_pin_relay_ch2.set_high();
+    thread::sleep(Duration::from_millis(1000));
+    println!("CH 2 pin low.");
+    rpi_pin_relay_ch2.set_low();
+    thread::sleep(Duration::from_millis(1000));
+    println!("CH 2 pin high.");
+    rpi_pin_relay_ch2.set_high();
+    
+
+
+    println!("CH 3 pin high.");
+    rpi_pin_relay_ch3.set_high();
+    thread::sleep(Duration::from_millis(1000));
+    println!("CH 3 pin low.");
+    rpi_pin_relay_ch3.set_low();
+    thread::sleep(Duration::from_millis(1000));
+    println!("CH 3 pin high.");
+    rpi_pin_relay_ch3.set_high();    
+*/
+
+    //******Setup Bluetooth*****************/
     let my_address = opt.server;
 
     let session = bluer::Session::new().await?;
@@ -261,15 +320,26 @@ async fn main() -> bluer::Result<()> {
             } => {
                 match dio_read_res {
                     Ok(0) => {
-                        println!("Write stream ended");
+                        println!("DIO Write stream ended");
                         dio_reader_opt = None;
                     }
                     Ok(n) => {
                         dio_value = dio_read_buf[0..n].to_vec();
-                        println!("Write request with {} bytes: {:x?}", n, &dio_value);
+                        println!("DIO Write request with {} bytes: {:x?}", n, &dio_value);
+                        if dio_value[0] == 0
+                        {
+                            println!("CH 1 pin high.");
+                            rpi_pin_relay_ch1.set_high();
+                            
+                        } 
+                        else if dio_value[0] == 1
+                        {
+                            println!("CH 1 pin low.");
+                            rpi_pin_relay_ch1.set_low();
+                        }
                     }
                     Err(err) => {
-                        println!("Write stream error: {}", &err);
+                        println!("DIO Write stream error: {}", &err);
                         dio_reader_opt = None;
                     }
                 }
