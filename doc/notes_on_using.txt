@@ -1,0 +1,95 @@
+user@debian:~/potto216$ gattcat adapters
+Bluetooth adapter hci0
+  Address             5C:F3:70:A1:71:0F [public]
+  System name         debian
+  Friendly name       debian
+  Powered             true
+  Discoverable        false
+  Pairable            false
+  Advertising
+    Active instances    0
+    Supported instances 5
+    Supported includes  tx-power, appearance, local-name
+
+
+Discovering devices using Bluetooth adapter hci0
+
+7A:B7:43:B4:9F:4A [random]  -59 dBm [##########     ]  0 s ago [##########]  Microsoft
+55:E8:2D:88:A6:FF [random]  -72 dBm [########       ]  0 s ago [##########]  Apple
+98:06:3C:F3:B1:EB [public]  -90 dBm [#####          ]  0 s ago [##########]  Samsung
+D8:89:F3:5D:B7:80 [random]  -56 dBm [##########     ]  3 s ago [######### ]  Apple
+58:BF:25:9C:50:7E [public]  -41 dBm [#############  ]  0 s ago [##########]               GATT_Server
+
+gattcat discover --bind 5C:F3:70:A1:71:0F 58:BF:25:9C:50:7E
+
+#==============================
+user@debian:~/potto216$ gattcat discover --bind 5C:F3:70:A1:71:0F 58:BF:25:9C:50:7E
+Device 58:BF:25:9C:50:7E [public]
+  Name      GATT_Server
+  RSSI      -42 dBm
+  Paired    no
+  Trusted   no
+  Services  b3f8665e-9514-11ed-9f96-37eb16895c01
+  Primary service Generic Attribute (1801)
+    Characteristic Service Changed (2a05)
+      Flags     indicate
+      Descriptor Client Characteristic Configuration (2902)
+        Read      00 00                           ..
+  Primary service b3f8665e-9514-11ed-9f96-37eb16895c01
+    Characteristic b5720d32-9514-11ed-985d-7300cdba6b00
+      Flags     read, write
+      Read      01                              .
+    Characteristic b5720d32-9514-11ed-985d-7300cdba6b01
+      Flags     read, write
+      Read      fd                              .
+    Characteristic b5720d32-9514-11ed-985d-7300cdba6b02
+      Flags     read
+      Read      01                              .
+    Characteristic b5720d32-9514-11ed-985d-7300cdba6b03
+      Flags     write
+    Characteristic b5720d32-9514-11ed-985d-7300cdba6b04
+      Flags     read, notify
+      Read      01                              .
+      Descriptor Client Characteristic Configuration (2902)
+        Read      00 00                           ..
+    Characteristic b5720d32-9514-11ed-985d-7300cdba6b05
+      Flags     read, notify
+      Read      00                              .
+      Descriptor Client Characteristic Configuration (2902)
+        Read      00 00                           ..
+    Characteristic b5720d32-9514-11ed-985d-7300cdba6b06
+      Flags     read, write
+      Read      01                              .
+  Primary service b3f8665e-9514-11ed-9f96-37eb16895c02
+    Characteristic b5720d32-9514-11ed-985d-7300cdba6b00
+      Flags     read, write
+      Read      00                              .
+    Characteristic b5720d32-9514-11ed-985d-7300cdba6b01
+      Flags     read, write
+      Read      00                              .
+    Characteristic b5720d32-9514-11ed-985d-7300cdba6b02
+      Flags     read
+      Read      00                              .
+    Characteristic b5720d32-9514-11ed-985d-7300cdba6b03
+      Flags     write
+    Characteristic b5720d32-9514-11ed-985d-7300cdba6b04
+      Flags     read, notify
+      Read      00                              .
+      Descriptor Client Characteristic Configuration (2902)
+        Read      00 00                           ..
+    Characteristic b5720d32-9514-11ed-985d-7300cdba6b05
+      Flags     read, notify
+      Read      00                              .
+      Descriptor Client Characteristic Configuration (2902)
+        Read      00 00                           ..
+    Characteristic b5720d32-9514-11ed-985d-7300cdba6b06
+      Flags     read, write
+      Read      00                            
+	  
+#====================================================================
+gattcat read --bind 5C:F3:70:A1:71:0F 58:BF:25:9C:50:7E b3f8665e-9514-11ed-9f96-37eb16895c01 b5720d32-9514-11ed-985d-7300cdba6b01
+Length: 1 (0x1) bytes
+0000:   3e 
+gattcat write --bind 5C:F3:70:A1:71:0F 58:BF:25:9C:50:7E b3f8665e-9514-11ed-9f96-37eb16895c01 b5720d32-9514-11ed-985d-7300cdba6b01 3e
+
+
