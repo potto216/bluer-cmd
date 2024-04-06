@@ -25,11 +25,7 @@ struct Opt {
     // short and long flags (-a, --advertiser) will be deduced from the field's name     
     #[structopt(short, long, default_value="", help="The advertisement address in the form XX:XX:XX:XX:XX:XX  ex: 5C:F3:70:A1:71:0F")]
     advertiser: String,
-
-    // short and long flags (-u, --uuid-service) will be deduced from the field's name     
-    #[structopt(short, long, default_value="", help="an optional uuid service to add to the advertisement. ex: 123e4567-e89b-12d3-a456-426614174000")]
-    uuid_service: String,
-    
+   
      /// UUID service to add to the advertisement. ex: 123e4567-e89b-12d3-a456-426614174000
      #[structopt(short = "u", long, use_delimiter = true, help = "List of service UUIDs separated by commas")]
      service_uuids: Vec<String>,
@@ -40,7 +36,7 @@ struct Opt {
  
      /// Advertise as general discoverable.
      #[structopt(long, help = "Advertise as general discoverable")]
-     discoverable: Option<bool>,
+     discoverable: bool,
  
      /// Duration of the advertisement in seconds.
      #[structopt(long, help = "Duration of the advertisement in seconds")]
@@ -54,7 +50,6 @@ async fn main() -> bluer::Result<()> {
     let verbose = opt.verbose;
     env_logger::init();
 
-    let uuid_service = opt.uuid_service;
 
     let service_uuids: BTreeSet<Uuid> = opt
     .service_uuids
@@ -99,9 +94,9 @@ async fn main() -> bluer::Result<()> {
     }
     let le_advertisement = Advertisement {
         advertisement_type: bluer::adv::Type::Peripheral,
-        service_uuids: service_uuids,
+        service_uuids,
         local_name: opt.local_name,
-        discoverable: opt.discoverable,
+        discoverable: Some(opt.discoverable),
         duration: opt.duration.map(Duration::from_secs),
         ..Default::default()
     };
