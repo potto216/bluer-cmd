@@ -1,6 +1,10 @@
 //! Perform a Bluetooth LE advertisement.
 
-use bluer::adv::Advertisement;
+
+use bluer::{
+    adv::Advertisement,
+    Uuid
+};
 use std::time::Duration;
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
@@ -10,7 +14,7 @@ use tokio::{
 use std::collections::{BTreeSet};
 use std::str::FromStr;
 use structopt::StructOpt;
-use uuid::Uuid; // Make sure the `uuid` crate is added to your dependencies
+//use uuid::Uuid; // Make sure the `uuid` crate is added to your dependencies
 //use std::str::FromStr;
 
 
