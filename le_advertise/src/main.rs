@@ -5,15 +5,57 @@ use bluer::{
     adv::Advertisement,
     Uuid
 };
-use std::time::Duration;
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     time::sleep,
 };
-
-use std::collections::{BTreeSet};
-use std::str::FromStr;
+use regex::Regex;
 use structopt::StructOpt;
+
+use std::time::Duration;
+use std::collections::{BTreeSet};
+use std::{error::Error, fmt, str::FromStr};
+use std::process;
+use bluer::adv::Type;
+
+
+#[derive(Debug)]
+struct IntervalParseError(String);
+
+impl fmt::Display for IntervalParseError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl Error for IntervalParseError {}
+
+#[derive(Debug)]
+struct Interval {
+    min_milliseconds: u64,
+    max_milliseconds: u64,
+}
+
+impl FromStr for Interval {
+    type Err = IntervalParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let parts: Vec<&str> = s.split(',').collect();
+        print!("parts = {:?}, s = {:?}", parts, s);
+        if parts.len() != 2 {
+            return Err(IntervalParseError("Expected two comma-separated numbers".into()));
+        }
+        // convert milliseconds to seconds        
+        let min = parts[0].parse::<u64>().map_err(|_| IntervalParseError("Failed to parse min interval".into()))?;
+        let max = parts[1].parse::<u64>().map_err(|_| IntervalParseError("Failed to parse max interval".into()))?;
+        Ok(Interval { min_milliseconds: min, max_milliseconds: max })
+    }
+}
+
+// cargo run --  --advertisement-type "broadcast" --local-name "rust!"
+
+
+
 //use uuid::Uuid; // Make sure the `uuid` crate is added to your dependencies
 //use std::str::FromStr;
 
@@ -21,6 +63,9 @@ use structopt::StructOpt;
 #[derive(Debug, StructOpt)]
 #[structopt(name = "le_advertise", about = "A command tool to generate BLE advertisements")]
 struct Opt {
+    #[structopt(long, help = "Type of the advertisement", possible_values = &["broadcast", "peripheral"])]
+    advertisement_type: Option<String>,
+
     /// Activate verbose mode
     // short and long flags (-v, --verbose) will be deduced from the field's name
     #[structopt(short, long, help="Show detailed information for troubleshooting, including details about the adapters")]
@@ -45,15 +90,40 @@ struct Opt {
      /// Duration of the advertisement in seconds.
      #[structopt(long, help = "Duration of the advertisement in seconds")]
      duration: Option<u64>,
+
+     #[structopt(long, help = "Min and max advertising intervals in milliseconds. Example: --interval 30,60")]
+     interval: Option<Interval>,
+
+     #[structopt(long, help = "Advertising TX power level")]
+     tx_power: Option<i16>,
+ 
+}
+
+impl Opt {
+    fn validate(&self) {
+        let re = Regex::new(r"^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$").unwrap();
+        // verify the the advertising interval's minimum value is less than its maximum 
+        if let Some(ref interval) = self.interval {
+            if interval.min_milliseconds >= interval.max_milliseconds {
+                eprintln!("Invalid advertising interval. The minimum value should be less than the maximum value");
+                process::exit(1);
+            }
+        }
+
+        if !self.advertiser.is_empty() && !re.is_match(&self.advertiser) {
+            eprintln!("Invalid advertiser address format. It should be in the form XX:XX:XX:XX:XX:XX");
+            process::exit(1);
+        }
+    }
 }
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> bluer::Result<()> {
 
     let opt = Opt::from_args();
+    opt.validate();
     let verbose = opt.verbose;
     env_logger::init();
-
 
     let service_uuids: BTreeSet<Uuid> = opt
     .service_uuids
@@ -62,7 +132,12 @@ async fn main() -> bluer::Result<()> {
     .collect();
 
     let session = bluer::Session::new().await?;
-            
+    // convert opt.advertisement_type to bluer::adv::Type
+    let advertisement_type = match opt.advertisement_type.as_deref() {
+        Some("broadcast") => Type::Broadcast,
+        Some("peripheral") => Type::Peripheral,
+        _ => Type::Peripheral,
+    };
         
     let adapter_names = session.adapter_names().await?;
     let adapter_name = adapter_names.first().expect("No Bluetooth adapter present");
@@ -96,14 +171,19 @@ async fn main() -> bluer::Result<()> {
         println!("    Modalias:                   {:?}", adapter.modalias().await?);
         println!("    Powered:                    {:?}", adapter.is_powered().await?);        
     }
+
+
     let le_advertisement = Advertisement {
-        advertisement_type: bluer::adv::Type::Peripheral,
+        advertisement_type: advertisement_type,
         service_uuids,
         local_name: opt.local_name,
         discoverable: Some(opt.discoverable),
         duration: opt.duration.map(Duration::from_secs),
+        tx_power: opt.tx_power,
+        min_interval: opt.interval.as_ref().map(|i| Duration::from_millis(i.min_milliseconds)),
+        max_interval: opt.interval.as_ref().map(|i| Duration::from_millis(i.max_milliseconds)),
         ..Default::default()
-    };
+    };    
 
     if verbose    
     {
