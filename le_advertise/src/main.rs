@@ -1,22 +1,27 @@
 //! Perform a Bluetooth LE advertisement.
 
+//use tokio::sync::CancellationToken;
+use tokio_util::sync::CancellationToken;
+use std::time::Duration;
+use std::collections::{BTreeSet};
+use std::{fmt, str::FromStr, error::Error};
+use std::process;
 
 use bluer::{
     adv::Advertisement,
-    Uuid
+    Uuid,
+    adv::Type
 };
 use tokio::{
-    io::{AsyncBufReadExt, BufReader},
+    io::{self, AsyncBufReadExt, BufReader},
     time::sleep,
 };
 use regex::Regex;
 use structopt::StructOpt;
 
-use std::time::Duration;
-use std::collections::{BTreeSet};
-use std::{error::Error, fmt, str::FromStr};
-use std::process;
-use bluer::adv::Type;
+use tokio::signal::unix::{signal, SignalKind};
+
+
 
 
 #[derive(Debug)]
@@ -120,6 +125,9 @@ impl Opt {
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> bluer::Result<()> {
 
+    let mut sig_term = signal(SignalKind::terminate())?;
+    let cancellation_token = CancellationToken::new();
+
     let opt = Opt::from_args();
     opt.validate();
     let verbose = opt.verbose;
@@ -191,17 +199,65 @@ async fn main() -> bluer::Result<()> {
     }
     let handle = adapter.advertise(le_advertisement).await?;
 
+    
+    // Wait for a signal to stop the advertisement
     println!("Press enter to quit");
-    let stdin = BufReader::new(tokio::io::stdin());
-    let mut lines = stdin.lines();
-    let _ = lines.next_line().await;
 
-    if verbose
-    {
+    
+    // Setup for detecting Enter key press in a cancellable task
+    // WARNING: In reality this doesn't work because a background task that reads from stdin is impossible to kill
+    // ref: https://github.com/tokio-rs/tokio/discussions/5684 and https://docs.rs/tokio/latest/tokio/io/fn.stdin.html
+    let stdin_task = {
+        let token = cancellation_token.clone();
+        tokio::spawn(async move {
+            let stdin = BufReader::new(io::stdin());
+            let mut lines = stdin.lines();
+            tokio::select! {
+                _ = lines.next_line() => {
+                    if verbose {
+                        println!("Enter key pressed, shutting down...");
+                    }
+                }
+                _ = token.cancelled() => {
+                    if verbose {
+                        println!("Cancellation token triggered, stopping stdin listener...");
+                    }
+                }
+            }
+        })
+    }; 
+
+
+    // Wait for either a signal to stop the advertisement or user input
+  tokio::select! {
+    _ = sig_term.recv() => {
+        if verbose {
+            println!("SIGTERM received, shutting down gracefully...");
+        }
+    }
+    
+    _ = stdin_task => {
+        if verbose {
+            println!("Enter is pressed or cancelled...");
+        }        
+        
+    }
+    
+}
+
+    // Clean up and finish
+    if verbose {
         println!("Removing advertisement");
     }
-    drop(handle);
+    drop(handle); // Ensure the advertisement is stopped
+    cancellation_token.cancel(); // Explicitly signal cancellation to the stdin task
+
+
     sleep(Duration::from_secs(1)).await;
+    if verbose
+    {
+        println!("Shutdown complete.");
+    }
 
     Ok(())
 }

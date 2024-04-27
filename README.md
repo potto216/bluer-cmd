@@ -42,5 +42,11 @@ Now start the advertising the service UUID 123e4567-e89b-12d3-a456-426614174000
 
 The scanning software will exit when it detects the advertiser. It will print whether the correct service UUID was detected.
 
+## Other Examples
+```
+cargo run -- -u 123e4567-e89b-12d3-a456-426614174000 -l bluer --discoverable --duration 2 -v
+timeout 10s cargo run -- -u 123e4567-e89b-12d3-a456-426614174000 -l bluer --discoverable --duration 3 -v
+```
+
 [BlueR]: https://github.com/bluez/bluer
 [Remoc]: https://crates.io/crates/remoc
